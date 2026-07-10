@@ -421,10 +421,53 @@ run_pktgen_ftrace() {
 
     ftrace_reset
 
-    echo function_graph    > "$TR/current_tracer"
-    echo "$FTRACE_FUNC"   > "$TR/set_graph_function"
-    echo "$FTRACE_FUNC"   > "$TR/set_ftrace_filter"
-    echo 1                 > "$TR/tracing_on"
+    echo function_graph > "$TR/current_tracer"
+
+    # Validate each requested function exists in the kernel's traceable symbol list.
+    # Writing an unknown symbol to set_ftrace_filter gives EINVAL and aborts the script.
+    local valid_funcs=""
+    local avail="$TR/available_filter_functions"
+    IFS=',' read -ra requested <<< "$FTRACE_FUNC"
+    for fn in "${requested[@]}"; do
+        fn="${fn// /}"   # trim whitespace
+        [ -z "$fn" ] && continue
+        # grep supports the glob syntax ftrace uses (* prefix/suffix)
+        if grep -qxF "$fn" "$avail" 2>/dev/null || \
+           grep -qP "^${fn//\*/.*}\b" "$avail" 2>/dev/null; then
+            valid_funcs+="${valid_funcs:+,}$fn"
+        else
+            echo "  WARNING: '$fn' not found in available_filter_functions — skipping."
+            echo "           It may be inlined or not compiled with tracing support."
+            echo "           Check: grep '$fn' $TR/available_filter_functions"
+        fi
+    done
+
+    if [ -n "$valid_funcs" ]; then
+        echo "$valid_funcs" > "$TR/set_graph_function"
+        echo "$valid_funcs" > "$TR/set_ftrace_filter"
+        echo "  ftrace filter : $valid_funcs"
+    else
+        echo "  WARNING: none of the requested functions are traceable."
+        echo "           Running ftrace with no filter (nop tracer) — only pktgen will run."
+        echo nop > "$TR/current_tracer"
+        echo "(no traceable functions found for: $FTRACE_FUNC)" > "$trace_out"
+
+        if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
+            echo "start" > /proc/net/pktgen/pgctrl
+            sleep "$PKTGEN_DURATION"
+            echo "stop"  > /proc/net/pktgen/pgctrl
+            cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
+                echo "(pktgen device report unavailable)" > "$pktgen_out"
+        else
+            sleep "$PKTGEN_DURATION"
+            echo "(pktgen not used)" > "$pktgen_out"
+        fi
+        ftrace_reset
+        echo "  -> pktgen : $(basename "$pktgen_out")"
+        return
+    fi
+
+    echo 1 > "$TR/tracing_on"
 
     if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
         echo "start" > /proc/net/pktgen/pgctrl
