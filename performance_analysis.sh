@@ -136,6 +136,10 @@ check_requirements() {
         exit 1
     fi
 
+    # sudo resets PATH; extend it with common source-install locations so tools
+    # like kpatch (built from git) are found even under sudo.
+    export PATH="$PATH:/usr/local/bin:/usr/local/sbin:/usr/local/kpatch/sbin"
+
     # Check required commands, print apt install hints for anything missing
     local missing=()
     for cmd in perf kpatch tc ip; do
