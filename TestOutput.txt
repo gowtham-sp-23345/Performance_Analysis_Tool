@@ -1,0 +1,103 @@
+root@10.134.26.222~#cd Performance_Analysis_Tool/
+root@10.134.26.222~/Performance_Analysis_Tool#ls
+compare_results.sh  install_deps.sh  performance_analysis.sh  remap-2.sh  setup_pktgen.sh
+root@10.134.26.222~/Performance_Analysis_Tool#./install_deps.sh 
+============================================================
+ Dependency installer — kernel: 6.1.123-modified
+ Fri Jul 10 13:17:25 IST 2026
+============================================================
+
+[1/5] Updating package lists...
+
+[2/5] Installing core tools (iproute2, ethtool, curl, tcpdump)...
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+iproute2 is already the newest version (6.1.0-3).
+ethtool is already the newest version (1:6.1-1).
+curl is already the newest version (7.88.1-10+deb12u14).
+tcpdump is already the newest version (4.99.3-1).
+The following package was automatically installed and is no longer required:
+  libcpupower1
+Use 'apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 76 not upgraded.
+
+kpatch already installed: /usr/local/sbin/kpatch  version: 0.9.10
+
+[3/5] Installing perf for kernel 6.1.123-modified...
+  Exact package linux-tools-6.1.123-modified not found, trying linux-tools-generic...
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+E: Unable to locate package linux-tools-generic
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Package linux-tools-common is not available, but is referred to by another package.
+This may mean that the package is missing, has been obsoleted, or
+is only available from another source
+
+
+[4/5] Installing optional tools (numactl, sysstat, linux-headers)...
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+numactl is already the newest version (2.0.16-1).
+The following package was automatically installed and is no longer required:
+  libcpupower1
+Use 'apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 76 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+sysstat is already the newest version (12.6.1-1).
+The following package was automatically installed and is no longer required:
+  libcpupower1
+Use 'apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 76 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+linux-headers-6.1.123-modified is already the newest version (6.1.123-modified-extra-prints).
+The following package was automatically installed and is no longer required:
+  libcpupower1
+Use 'apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 76 not upgraded.
+
+[5/5] Checking pktgen kernel module...
+  pktgen module loaded successfully.
+  (it will be loaded automatically on next run if needed)
+
+Checking tracefs (ftrace)...
+  tracefs already mounted at /sys/kernel/tracing
+
+============================================================
+ Verification
+============================================================
+  perf         OK  (/usr/bin/perf)
+  kpatch       OK  (/usr/local/sbin/kpatch)
+  ip           OK  (/usr/sbin/ip)
+  tc           OK  (/usr/sbin/tc)
+  ethtool      OK  (/usr/sbin/ethtool)
+  numactl      OK  (optional)
+  mpstat       OK  (optional)
+  iostat       OK  (optional)
+
+  tracefs     OK  (/sys/kernel/tracing)
+  pktgen      OK  (/proc/net/pktgen)
+
+All required dependencies are present.
+You can now run:
+  sudo ./setup_pktgen.sh                    # optional — configure pktgen
+  sudo ./performance_analysis.sh <outdir> <run#> <livepatch.ko>
+root@10.134.26.222~/Performance_Analysis_Tool#./setup_pktgen.sh 
+Loading pktgen module...
+Configuring pktgen: iface=bond0 dst_mac=ff:ff:ff:ff:ff:ff dst_ip=192.168.1.1 pkt_size=1400 count=0 threads=1
+  Thread 0 -> /proc/net/pktgen/bond0@0 configured
+
+pktgen setup complete.
+  Start traffic : echo start > /proc/net/pktgen/pgctrl
+  Stop  traffic : echo stop  > /proc/net/pktgen/pgctrl
+  View  stats   : cat /proc/net/pktgen/bond0
+
+performance_analysis.sh will start/stop pktgen automatically.

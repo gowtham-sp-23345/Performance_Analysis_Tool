@@ -88,7 +88,7 @@ echo " Kernel Performance Analysis — Run ${RUN_NUMBER}"
 echo " $(date)"
 echo " Livepatch : $(basename "$LIVEPATCH_KO")"
 echo " Interface : ${INTERFACE}"
-echo " ftrace    : ${FTRACE_FUNC:-<all functions>}"
+echo " ftrace    : ${FTRACE_FUNC:-<skipped — set FTRACE_FUNC=<symbol> to enable>}"
 echo " Output    : ${OUTPUT_DIR}"
 echo "============================================================"
 
@@ -393,25 +393,39 @@ run_pktgen_ftrace() {
     local pktgen_out="$2"
     local label="$3"
 
-    echo "Running ftrace ($label, ${PKTGEN_DURATION}s) -> $(basename "$trace_out")"
+    # Safety: function_graph with no filter traces every kernel function and
+    # generates GB/s of data, stalling the system.  Skip ftrace when no
+    # specific function is requested; perf stat already covers generic metrics.
+    if [ -z "$FTRACE_FUNC" ]; then
+        echo "ftrace skipped ($label) — FTRACE_FUNC not set."
+        echo "  Set FTRACE_FUNC=<symbol> to enable function-graph tracing."
+        echo "(ftrace skipped — set FTRACE_FUNC=<symbol> to enable)" > "$trace_out"
+
+        # Still run pktgen for the network throughput measurement
+        if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
+            echo "Running pktgen ($label, ${PKTGEN_DURATION}s) -> $(basename "$pktgen_out")"
+            echo "start" > /proc/net/pktgen/pgctrl
+            sleep "$PKTGEN_DURATION"
+            echo "stop"  > /proc/net/pktgen/pgctrl
+            cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
+                echo "(pktgen device report unavailable)" > "$pktgen_out"
+            echo "  -> pktgen : $(basename "$pktgen_out")"
+        else
+            echo "(pktgen not used)" > "$pktgen_out"
+        fi
+        return
+    fi
+
+    echo "Running pktgen + ftrace ($label, ${PKTGEN_DURATION}s, filter: $FTRACE_FUNC)"
+    echo "  -> trace  : $(basename "$trace_out")"
 
     ftrace_reset
 
-    echo function_graph > "$TR/current_tracer"
+    echo function_graph    > "$TR/current_tracer"
+    echo "$FTRACE_FUNC"   > "$TR/set_graph_function"
+    echo "$FTRACE_FUNC"   > "$TR/set_ftrace_filter"
+    echo 1                 > "$TR/tracing_on"
 
-    if [ -n "$FTRACE_FUNC" ]; then
-        # Filter to the specific function(s) requested
-        echo "$FTRACE_FUNC" > "$TR/set_graph_function"
-        echo "$FTRACE_FUNC" > "$TR/set_ftrace_filter"
-        echo "  ftrace filter : $FTRACE_FUNC"
-    else
-        # No filter — trace all kernel functions (generic, works for any patch)
-        echo "  ftrace filter : <all functions>"
-    fi
-
-    echo 1 > "$TR/tracing_on"
-
-    # Run pktgen if available, otherwise just sleep so ftrace captures live traffic
     if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
         echo "start" > /proc/net/pktgen/pgctrl
         sleep "$PKTGEN_DURATION"
@@ -428,7 +442,6 @@ run_pktgen_ftrace() {
     cp "$TR/trace" "$trace_out"
     ftrace_reset
 
-    echo "  -> trace  : $(basename "$trace_out")"
     echo "  -> pktgen : $(basename "$pktgen_out")"
 }
 
@@ -528,7 +541,7 @@ SUMMARY="${OUTPUT_DIR}/summary_${RUN_NUMBER}.txt"
     echo "Kernel    : $(uname -r)"
     echo "Patch     : $(basename "$LIVEPATCH_KO")"
     echo "Interface : $INTERFACE"
-    echo "ftrace    : ${FTRACE_FUNC:-<all functions>}"
+    echo "ftrace    : ${FTRACE_FUNC:-<skipped>}"
     echo
 
     echo "--- pktgen: before patch ---"
