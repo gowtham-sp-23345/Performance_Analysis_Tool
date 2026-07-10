@@ -367,6 +367,10 @@ run_perf_stat() {
     local label="$2"
     echo "Running perf stat ($label, ${PERF_DURATION}s) -> $(basename "$outfile")"
 
+    # Show countdown in background while perf stat runs
+    ( _sleep_progress "$PERF_DURATION" "perf stat" ) &
+    local _prog_pid=$!
+
     perf stat \
         -a \
         -e cycles,instructions,branches,branch-misses,\
@@ -377,12 +381,33 @@ LLC-loads,LLC-load-misses \
         -- sleep "$PERF_DURATION" \
         2> "$outfile"
 
+    wait "$_prog_pid" 2>/dev/null || true
     echo "  -> done"
 }
 
 ###############################################################################
 # ftrace + pktgen measurement
 ###############################################################################
+
+# Print a countdown so the user knows the script is running, not hung
+_sleep_progress() {
+    local secs="$1"
+    local label="$2"
+    local i
+    for i in $(seq "$secs" -1 1); do
+        printf "\r  [%s] %3ds remaining..." "$label" "$i"
+        sleep 1
+    done
+    printf "\r  [%s] done.                \n" "$label"
+}
+
+# Check if pktgen has a thread+device configured for PKTGEN_DEV
+_pktgen_ready() {
+    [ -n "$PKTGEN_DEV" ] || return 1
+    [ -d /proc/net/pktgen ] || return 1
+    # A device file for this interface must exist under /proc/net/pktgen/
+    ls /proc/net/pktgen/ 2>/dev/null | grep -qF "$PKTGEN_DEV"
+}
 
 ftrace_reset() {
     echo 0   > "$TR/tracing_on"
@@ -456,15 +481,17 @@ run_pktgen_ftrace() {
         echo nop > "$TR/current_tracer"
         echo "(no traceable functions found for: $FTRACE_FUNC)" > "$trace_out"
 
-        if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
+        if _pktgen_ready; then
             echo "start" > /proc/net/pktgen/pgctrl
-            sleep "$PKTGEN_DURATION"
+            _sleep_progress "$PKTGEN_DURATION" "pktgen"
             echo "stop"  > /proc/net/pktgen/pgctrl
             cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
                 echo "(pktgen device report unavailable)" > "$pktgen_out"
         else
-            sleep "$PKTGEN_DURATION"
-            echo "(pktgen not used)" > "$pktgen_out"
+            echo "  pktgen not configured for $PKTGEN_DEV — run setup_pktgen.sh first."
+            echo "  Sleeping ${PKTGEN_DURATION}s to keep measurement windows equal."
+            _sleep_progress "$PKTGEN_DURATION" "ftrace only"
+            echo "(pktgen not configured)" > "$pktgen_out"
         fi
         ftrace_reset
         echo "  -> pktgen : $(basename "$pktgen_out")"
@@ -473,16 +500,17 @@ run_pktgen_ftrace() {
 
     echo 1 > "$TR/tracing_on"
 
-    if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
+    if _pktgen_ready; then
         echo "start" > /proc/net/pktgen/pgctrl
-        sleep "$PKTGEN_DURATION"
+        _sleep_progress "$PKTGEN_DURATION" "pktgen+ftrace"
         echo "stop"  > /proc/net/pktgen/pgctrl
         cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
             echo "(pktgen device report unavailable)" > "$pktgen_out"
     else
-        echo "  (pktgen not configured — sleeping ${PKTGEN_DURATION}s under ftrace)"
-        sleep "$PKTGEN_DURATION"
-        echo "(pktgen not used)" > "$pktgen_out"
+        echo "  pktgen not configured for $PKTGEN_DEV — run setup_pktgen.sh first."
+        echo "  Sleeping ${PKTGEN_DURATION}s for ftrace to capture live traffic."
+        _sleep_progress "$PKTGEN_DURATION" "ftrace only"
+        echo "(pktgen not configured)" > "$pktgen_out"
     fi
 
     echo 0 > "$TR/tracing_on"
