@@ -100,7 +100,7 @@ echo "============================================================"
 _apt_pkg() {
     case "$1" in
         perf)   echo "linux-tools-$(uname -r) linux-tools-common" ;;
-        kpatch) echo "kpatch" ;;
+        kpatch) echo "kpatch  (or build from source: https://github.com/dynup/kpatch)" ;;
         tc)     echo "iproute2" ;;
         ip)     echo "iproute2" ;;
         *)      echo "$1" ;;

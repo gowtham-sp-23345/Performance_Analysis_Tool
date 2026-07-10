@@ -56,14 +56,33 @@ apt-get update -qq
 ###############################################################################
 
 echo
-echo "[2/5] Installing core tools (iproute2, ethtool, kpatch)..."
+echo "[2/5] Installing core tools (iproute2, ethtool, curl, tcpdump)..."
 
 apt-get install -y \
     iproute2 \
     ethtool \
-    kpatch \
     curl \
     tcpdump
+
+# kpatch: skip if already installed (commonly built from source)
+echo
+if command -v kpatch >/dev/null 2>&1; then
+    echo "kpatch already installed: $(command -v kpatch)  version: $(kpatch -v 2>&1 || true)"
+else
+    echo "kpatch not found. Attempting apt install..."
+    if apt-get install -y kpatch 2>/dev/null; then
+        echo "  kpatch installed via apt."
+    else
+        echo
+        echo "  apt package 'kpatch' not available on this system."
+        echo "  Install from source:"
+        echo "    sudo apt-get install -y git build-essential libelf-dev"
+        echo "    git clone https://github.com/dynup/kpatch.git"
+        echo "    cd kpatch && make && sudo make install"
+        echo
+        echo "  Continuing — install kpatch manually before running performance_analysis.sh."
+    fi
+fi
 
 ###############################################################################
 # perf — kernel-version-specific package
