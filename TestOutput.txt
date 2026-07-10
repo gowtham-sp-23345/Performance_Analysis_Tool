@@ -101,3 +101,176 @@ pktgen setup complete.
   View  stats   : cat /proc/net/pktgen/bond0
 
 performance_analysis.sh will start/stop pktgen automatically.
+root@10.134.26.222~/Performance_Analysis_Tool#FTRACE_FUNC=meminfo_proc_show ./performance_analysis.sh /tmp/results 1 /home/patch_files/without_replace/livepatch-meminfo_1.ko
+============================================================
+ Kernel Performance Analysis — Run 1
+ Fri Jul 10 14:08:45 IST 2026
+ Livepatch : livepatch-meminfo_1.ko
+ Interface : bond0
+ ftrace    : meminfo_proc_show
+ Output    : /tmp/results/performance_run_1
+============================================================
+
+============================================================
+ PHASE 1: Before Patch
+============================================================
+Collecting system information -> sysinfo_before_patch.txt
+  -> done
+Running perf stat (before patch, 60s) -> perf_stat_before_patch.txt
+  [perf stat] 60s remaining...
+  [perf stat] 50s remaining...
+  [perf stat] 40s remaining...
+  [perf stat] 30s remaining...
+  [perf stat] 20s remaining...
+  [perf stat] 10s remaining...
+  [perf stat] done.
+  -> done
+Running pktgen + ftrace (before patch, 60s, filter: meminfo_proc_show)
+  -> trace  : ftrace_before_patch_1.txt
+  ftrace filter : meminfo_proc_show
+  [pktgen+ftrace] 60s remaining...
+  [pktgen+ftrace] 50s remaining...
+  [pktgen+ftrace] 40s remaining...
+  [pktgen+ftrace] 30s remaining...
+  [pktgen+ftrace] 20s remaining...
+  [pktgen+ftrace] 10s remaining...
+  [pktgen+ftrace] done.
+  -> pktgen : pktgen_report_before_patch.txt
+
+Phase 1 complete.
+
+============================================================
+ PHASE 2: Applying Livepatch
+============================================================
+Loading: /home/patch_files/without_replace/livepatch-meminfo_1.ko
+loading patch module: /home/patch_files/without_replace/livepatch-meminfo_1.ko
+waiting (up to 15 seconds) for patch transition to complete...
+transition complete (2 seconds)
+Waiting for livepatch transition to complete...
+  -> Transition complete (1s)
+
+Livepatch status:
+  Patch     : livepatch_meminfo_1
+  Enabled   : 1
+  Transition: 0
+  Patch     : livepatch_my_module_cb_fix
+  Enabled   : 1
+  Transition: 0
+
+============================================================
+ PHASE 3: After Patch
+============================================================
+Collecting system information -> sysinfo_after_patch.txt
+  -> done
+Running perf stat (after patch, 60s) -> perf_stat_after_patch.txt
+  [perf stat] 60s remaining...
+  [perf stat] 50s remaining...
+  [perf stat] 40s remaining...
+  [perf stat] 30s remaining...
+  [perf stat] 20s remaining...
+  [perf stat] 10s remaining...
+  [perf stat] done.
+  -> done
+Running pktgen + ftrace (after patch, 60s, filter: meminfo_proc_show)
+  -> trace  : ftrace_after_patch_1.txt
+  ftrace filter : meminfo_proc_show
+  [pktgen+ftrace] 60s remaining...
+  [pktgen+ftrace] 50s remaining...
+  [pktgen+ftrace] 40s remaining...
+  [pktgen+ftrace] 30s remaining...
+  [pktgen+ftrace] 20s remaining...
+  [pktgen+ftrace] 10s remaining...
+  [pktgen+ftrace] done.
+  -> pktgen : pktgen_report_after_patch.txt
+
+Phase 3 complete.
+
+============================================================
+ Summary
+============================================================
+Kernel Performance Analysis — Run 1
+Date      : Fri Jul 10 14:13:17 IST 2026
+Kernel    : 6.1.123-modified
+Patch     : livepatch-meminfo_1.ko
+Interface : bond0
+ftrace    : meminfo_proc_show
+
+--- pktgen: before patch ---
+(pktgen device report unavailable)
+
+--- pktgen: after patch ---
+(pktgen device report unavailable)
+
+--- perf stat: before patch ---
+
+ Performance counter stats for 'system wide':
+
+    17,715,747,892      cycles                           #    0.009 GHz                      (62.61%)
+     6,703,017,745      instructions                     #    0.38  insn per cycle           (62.58%)
+     1,417,124,460      branches                         #  737.863 K/sec                    (62.35%)
+       176,742,601      branch-misses                    #   12.47% of all branches          (62.36%)
+       872,023,379      cache-references                 #  454.042 K/sec                    (62.38%)
+       336,367,551      cache-misses                     #   38.573 % of all cache refs      (62.53%)
+      1,920,580.65 msec task-clock                       #   32.004 CPUs utilized          
+            88,469      context-switches                 #   46.064 /sec                   
+               171      cpu-migrations                   #    0.089 /sec                   
+     3,075,790,728      L1-dcache-loads                  #    1.601 M/sec                    (62.55%)
+       179,824,006      L1-dcache-load-misses            #    5.85% of all L1-dcache accesses  (62.63%)
+   <not supported>      LLC-loads                                                   
+   <not supported>      LLC-load-misses                                             
+
+      60.011090693 seconds time elapsed
+
+
+--- perf stat: after patch ---
+
+ Performance counter stats for 'system wide':
+
+    13,387,636,565      cycles                           #    0.007 GHz                      (62.61%)
+     3,668,617,539      instructions                     #    0.27  insn per cycle           (62.58%)
+       693,824,884      branches                         #  361.265 K/sec                    (62.35%)
+       107,317,192      branch-misses                    #   15.47% of all branches          (62.37%)
+       629,285,860      cache-references                 #  327.660 K/sec                    (62.38%)
+       271,143,983      cache-misses                     #   43.088 % of all cache refs      (62.53%)
+      1,920,543.99 msec task-clock                       #   32.004 CPUs utilized          
+            75,378      context-switches                 #   39.248 /sec                   
+                71      cpu-migrations                   #    0.037 /sec                   
+     1,778,524,001      L1-dcache-loads                  #  926.052 K/sec                    (62.55%)
+       123,897,958      L1-dcache-load-misses            #    6.97% of all L1-dcache accesses  (62.63%)
+   <not supported>      LLC-loads                                                   
+   <not supported>      LLC-load-misses                                             
+
+      60.009505507 seconds time elapsed
+
+
+--- ftrace line counts ---
+  before : 10 lines
+  after  : 7 lines
+
+All results saved under: /tmp/results/performance_run_1
+Run ./compare_results.sh /tmp/results 1 to analyze.
+root@10.134.26.222~/Performance_Analysis_Tool#./compare_results.sh /tmp/results 1
+============================================================
+ Kernel Performance Comparison Report
+ Run       : 1
+ Directory : /tmp/results/performance_run_1
+ Date      : Fri Jul 10 14:14:28 IST 2026
+============================================================
+
+##############################################################
+ perf stat comparison
+##############################################################
+  Event                                         BEFORE                 AFTER      CHANGE
+  ------------------------------  --------------------  --------------------  ----------
+  cycles                                   17715747892           13387636565     -24.43%
+  instructions                              6703017745            3668617539     -45.27%
+  branches                                  1417124460             693824884     -51.04%
+  branch-misses                              176742601             107317192     -39.28%
+  cache-references                           872023379             629285860     -27.84%
+  cache-misses                               336367551             271143983     -19.39%
+  task-clock                                1920580.65            1920543.99      -0.00%
+  context-switches                               88469                 75378     -14.80%
+  cpu-migrations                                   171                    71     -58.48%
+  L1-dcache-loads                           3075790728            1778524001     -42.18%
+  L1-dcache-load-misses                      179824006             123897958     -31.10%
+awk: cmd. line:3: fatal: division by zero attempted

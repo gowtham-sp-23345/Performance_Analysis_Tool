@@ -362,31 +362,8 @@ collect_sysinfo() {
 # perf stat
 ###############################################################################
 
-run_perf_stat() {
-    local outfile="$1"
-    local label="$2"
-    echo "Running perf stat ($label, ${PERF_DURATION}s) -> $(basename "$outfile")"
-
-    # Show countdown in background while perf stat runs
-    ( _sleep_progress "$PERF_DURATION" "perf stat" ) &
-    local _prog_pid=$!
-
-    perf stat \
-        -a \
-        -e cycles,instructions,branches,branch-misses,\
-cache-references,cache-misses,task-clock,\
-context-switches,cpu-migrations,\
-L1-dcache-loads,L1-dcache-load-misses,\
-LLC-loads,LLC-load-misses \
-        -- sleep "$PERF_DURATION" \
-        2> "$outfile"
-
-    wait "$_prog_pid" 2>/dev/null || true
-    echo "  -> done"
-}
-
 ###############################################################################
-# ftrace + pktgen measurement
+# Helper utilities
 ###############################################################################
 
 # Print periodic progress ticks (newline-based so it works through tee/log)
@@ -410,6 +387,33 @@ _pktgen_ready() {
     [ -d /proc/net/pktgen ] || return 1
     # A device file for this interface must exist under /proc/net/pktgen/
     ls /proc/net/pktgen/ 2>/dev/null | grep -qF "$PKTGEN_DEV"
+}
+
+###############################################################################
+# perf stat
+###############################################################################
+
+run_perf_stat() {
+    local outfile="$1"
+    local label="$2"
+    echo "Running perf stat ($label, ${PERF_DURATION}s) -> $(basename "$outfile")"
+
+    # Progress ticker runs alongside perf stat in this background job
+    ( _sleep_progress "$PERF_DURATION" "perf stat[$label]" ) &
+    local _prog_pid=$!
+
+    perf stat \
+        -a \
+        -e cycles,instructions,branches,branch-misses,\
+cache-references,cache-misses,task-clock,\
+context-switches,cpu-migrations,\
+L1-dcache-loads,L1-dcache-load-misses,\
+LLC-loads,LLC-load-misses \
+        -- sleep "$PERF_DURATION" \
+        2> "$outfile"
+
+    wait "$_prog_pid" 2>/dev/null || true
+    echo "  -> [perf stat] done"
 }
 
 ftrace_reset() {
@@ -530,6 +534,62 @@ run_pktgen_ftrace() {
 }
 
 ###############################################################################
+# Parallel Phase Runner
+#
+# Runs collect_sysinfo, run_perf_stat, and run_pktgen_ftrace concurrently.
+# This:
+#   - Cuts per-phase wall time from ~(sysinfo + perf + pktgen) to ~max(all three)
+#   - Makes perf stat capture CPU stats WHILE ftrace records function calls
+#     under live load — more accurate than measuring them sequentially.
+###############################################################################
+
+run_phase() {
+    local label="$1"          # e.g. "before patch"
+    local sysinfo_out="$2"
+    local perf_out="$3"
+    local trace_out="$4"
+    local pktgen_out="$5"
+
+    echo "  Starting parallel tasks: sysinfo | perf stat | pktgen+ftrace"
+    echo "  (all three run simultaneously for accurate co-measurement)"
+    echo
+
+    # Launch all three in parallel
+    collect_sysinfo   "$sysinfo_out"                 & local pid_sysinfo=$!
+    run_perf_stat     "$perf_out"     "$label"        & local pid_perf=$!
+    run_pktgen_ftrace "$trace_out"    "$pktgen_out" "$label" & local pid_ftrace=$!
+
+    # Wait for each and report result
+    local failed=0
+
+    if wait "$pid_sysinfo"; then
+        echo "  [sysinfo]      complete"
+    else
+        echo "  [sysinfo]      FAILED (exit $?)"
+        failed=$(( failed + 1 ))
+    fi
+
+    if wait "$pid_perf"; then
+        echo "  [perf stat]    complete"
+    else
+        echo "  [perf stat]    FAILED (exit $?)"
+        failed=$(( failed + 1 ))
+    fi
+
+    if wait "$pid_ftrace"; then
+        echo "  [pktgen+ftrace] complete"
+    else
+        echo "  [pktgen+ftrace] FAILED (exit $?)"
+        failed=$(( failed + 1 ))
+    fi
+
+    if [ "$failed" -gt 0 ]; then
+        echo "ERROR: $failed task(s) failed in phase: $label"
+        exit 1
+    fi
+}
+
+###############################################################################
 # PHASE 1 — Before Patch
 ###############################################################################
 
@@ -538,16 +598,11 @@ echo "============================================================"
 echo " PHASE 1: Before Patch"
 echo "============================================================"
 
-collect_sysinfo "${OUTPUT_DIR}/sysinfo_before_patch.txt"
-
-run_perf_stat \
+run_phase "before patch" \
+    "${OUTPUT_DIR}/sysinfo_before_patch.txt" \
     "${OUTPUT_DIR}/perf_stat_before_patch.txt" \
-    "before patch"
-
-run_pktgen_ftrace \
     "${OUTPUT_DIR}/ftrace_before_patch_${RUN_NUMBER}.txt" \
-    "${OUTPUT_DIR}/pktgen_report_before_patch.txt" \
-    "before patch"
+    "${OUTPUT_DIR}/pktgen_report_before_patch.txt"
 
 echo
 echo "Phase 1 complete."
@@ -595,16 +650,11 @@ echo "============================================================"
 echo " PHASE 3: After Patch"
 echo "============================================================"
 
-collect_sysinfo "${OUTPUT_DIR}/sysinfo_after_patch.txt"
-
-run_perf_stat \
+run_phase "after patch" \
+    "${OUTPUT_DIR}/sysinfo_after_patch.txt" \
     "${OUTPUT_DIR}/perf_stat_after_patch.txt" \
-    "after patch"
-
-run_pktgen_ftrace \
     "${OUTPUT_DIR}/ftrace_after_patch_${RUN_NUMBER}.txt" \
-    "${OUTPUT_DIR}/pktgen_report_after_patch.txt" \
-    "after patch"
+    "${OUTPUT_DIR}/pktgen_report_after_patch.txt"
 
 echo
 echo "Phase 3 complete."
