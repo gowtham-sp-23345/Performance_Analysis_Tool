@@ -389,16 +389,19 @@ LLC-loads,LLC-load-misses \
 # ftrace + pktgen measurement
 ###############################################################################
 
-# Print a countdown so the user knows the script is running, not hung
+# Print periodic progress ticks (newline-based so it works through tee/log)
 _sleep_progress() {
     local secs="$1"
     local label="$2"
-    local i
-    for i in $(seq "$secs" -1 1); do
-        printf "\r  [%s] %3ds remaining..." "$label" "$i"
-        sleep 1
+    local elapsed=0
+    local tick=10   # print a line every 10 seconds
+    while [ $elapsed -lt $secs ]; do
+        local remaining=$(( secs - elapsed ))
+        echo "  [${label}] ${remaining}s remaining..."
+        sleep $tick
+        elapsed=$(( elapsed + tick ))
     done
-    printf "\r  [%s] done.                \n" "$label"
+    echo "  [${label}] done."
 }
 
 # Check if pktgen has a thread+device configured for PKTGEN_DEV
@@ -431,11 +434,13 @@ run_pktgen_ftrace() {
         echo "(ftrace skipped — set FTRACE_FUNC=<symbol> to enable)" > "$trace_out"
 
         # Still run pktgen for the network throughput measurement
-        if [ -n "$PKTGEN_DEV" ] && [ -d /proc/net/pktgen ]; then
+        if _pktgen_ready; then
             echo "Running pktgen ($label, ${PKTGEN_DURATION}s) -> $(basename "$pktgen_out")"
-            echo "start" > /proc/net/pktgen/pgctrl
-            sleep "$PKTGEN_DURATION"
-            echo "stop"  > /proc/net/pktgen/pgctrl
+            echo "start" > /proc/net/pktgen/pgctrl &
+            local _pp=$!
+            _sleep_progress "$PKTGEN_DURATION" "pktgen"
+            echo "stop" > /proc/net/pktgen/pgctrl
+            wait "$_pp" 2>/dev/null || true
             cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
                 echo "(pktgen device report unavailable)" > "$pktgen_out"
             echo "  -> pktgen : $(basename "$pktgen_out")"
@@ -481,29 +486,33 @@ run_pktgen_ftrace() {
         echo nop > "$TR/current_tracer"
         echo "(no traceable functions found for: $FTRACE_FUNC)" > "$trace_out"
 
-        if _pktgen_ready; then
-            echo "start" > /proc/net/pktgen/pgctrl
-            _sleep_progress "$PKTGEN_DURATION" "pktgen"
-            echo "stop"  > /proc/net/pktgen/pgctrl
-            cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
-                echo "(pktgen device report unavailable)" > "$pktgen_out"
-        else
-            echo "  pktgen not configured for $PKTGEN_DEV — run setup_pktgen.sh first."
-            echo "  Sleeping ${PKTGEN_DURATION}s to keep measurement windows equal."
-            _sleep_progress "$PKTGEN_DURATION" "ftrace only"
-            echo "(pktgen not configured)" > "$pktgen_out"
-        fi
-        ftrace_reset
-        echo "  -> pktgen : $(basename "$pktgen_out")"
-        return
+    if _pktgen_ready; then
+        echo "start" > /proc/net/pktgen/pgctrl &
+        local _pktgen_pid=$!
+        _sleep_progress "$PKTGEN_DURATION" "pktgen"
+        echo "stop" > /proc/net/pktgen/pgctrl
+        wait "$_pktgen_pid" 2>/dev/null || true
+        cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
+            echo "(pktgen device report unavailable)" > "$pktgen_out"
+    else
+        echo "  pktgen not configured for $PKTGEN_DEV — run setup_pktgen.sh first."
+        echo "  Sleeping ${PKTGEN_DURATION}s to keep measurement windows equal."
+        _sleep_progress "$PKTGEN_DURATION" "ftrace only"
+        echo "(pktgen not configured)" > "$pktgen_out"
     fi
+    ftrace_reset
+    echo "  -> pktgen : $(basename "$pktgen_out")"
+    return
+  fi
 
     echo 1 > "$TR/tracing_on"
 
     if _pktgen_ready; then
-        echo "start" > /proc/net/pktgen/pgctrl
+        echo "start" > /proc/net/pktgen/pgctrl &
+        local _pktgen_pid=$!
         _sleep_progress "$PKTGEN_DURATION" "pktgen+ftrace"
-        echo "stop"  > /proc/net/pktgen/pgctrl
+        echo "stop" > /proc/net/pktgen/pgctrl
+        wait "$_pktgen_pid" 2>/dev/null || true
         cp "/proc/net/pktgen/$PKTGEN_DEV" "$pktgen_out" 2>/dev/null || \
             echo "(pktgen device report unavailable)" > "$pktgen_out"
     else
